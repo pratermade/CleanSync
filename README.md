@@ -1,4 +1,4 @@
-# Project Title
+# S3sync
 
 s3sync
 
