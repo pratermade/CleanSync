@@ -49,6 +49,7 @@ func (app *Syncer) InitDb(dbpath string) error {
 	return nil
 }
 
+// GetUploadList queries the db and returns a slice of files that need updated.
 func (app *Syncer) GetUploadList() ([]string, error) {
 	rows, err := app.db.Query(SELECTUPLOADLIST)
 	if err != nil {
@@ -65,28 +66,7 @@ func (app *Syncer) GetUploadList() ([]string, error) {
 	return res, nil
 }
 
-func (app *Syncer) updateUploadStatus(p string) error {
-	tx, err := app.db.Begin()
-	if err != nil {
-		return err
-	}
-	stmt, err := tx.Prepare(UPDATEUPLOADSTATUS)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-	_, err = stmt.Exec(p)
-	if err != nil {
-		return err
-	}
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
+// UploadDiffs uploads the files(paths) in the diffs slice, will commit to glacier deep archive if deep is set to true
 func (app *Syncer) UploadDiffs(ctx context.Context, diffs []string, deep bool) error {
 	count := len(diffs)
 	if count == 0 {
@@ -101,7 +81,7 @@ func (app *Syncer) UploadDiffs(ctx context.Context, diffs []string, deep bool) e
 	multi.Start()
 	for _, v := range diffs {
 		pb.Increment()
-		err := app.PutObject(ctx, v, deep)
+		err := app.putObject(ctx, v, deep)
 		if err != nil {
 			return err
 		}
@@ -115,6 +95,7 @@ func (app *Syncer) UploadDiffs(ctx context.Context, diffs []string, deep bool) e
 	return nil
 }
 
+// UpdateManifest Updates the database for all the files (paths) specified in objs slice
 func (app *Syncer) UpdateManifest(objs map[string]int64) error {
 
 	for k, v := range objs {
@@ -123,49 +104,9 @@ func (app *Syncer) UpdateManifest(objs map[string]int64) error {
 	return nil
 }
 
-func (app *Syncer) updateRecord(p string, mod int64) error {
-	tx, err := app.db.Begin()
-	if err != nil {
-		return err
-	}
-
-	query, err := tx.Prepare(UPSERTRECORD)
-	if err != nil {
-		return err
-	}
-	defer query.Close()
-
-	exists, err := app.recordExists(p, mod)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	_, err = query.Exec(p, mod, 0, mod, 0)
-	if err != nil {
-		return err
-	}
-	tx.Commit()
-	return nil
-}
-
-func (app *Syncer) GetBucketKeys(ctx context.Context) ([]string, error) {
-
-	res, err := app.S3Client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
-		Bucket: aws.String(app.Bucket),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	keys := []string{}
-	for _, obj := range res.Contents {
-		keys = append(keys, *obj.Key)
-	}
-	return keys, nil
-}
-
+// WalkAndHash walks the directory structure that is specifed in the Syncer.Folderpath.
+// Will filter for filetypes listed in the filters slice.
+// Returns a map of filepath[lastModDate]
 func (app *Syncer) WalkAndHash(filters []string) (map[string]int64, error) {
 	spinnerInfo, err := pterm.DefaultSpinner.Start("Taking inventory of existing files.")
 	if err != nil {
@@ -198,6 +139,59 @@ func (app *Syncer) WalkAndHash(filters []string) (map[string]int64, error) {
 	return retMap, nil
 }
 
+// updateRecord updates or inserts an individual record with the p path and the last mod date specified by mod
+// checks to see if the record needs updating first, only will update if the modified date has changed
+func (app *Syncer) updateRecord(p string, mod int64) error {
+	tx, err := app.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	query, err := tx.Prepare(UPSERTRECORD)
+	if err != nil {
+		return err
+	}
+	defer query.Close()
+
+	exists, err := app.recordExists(p, mod)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = query.Exec(p, mod, 0, mod, 0)
+	if err != nil {
+		return err
+	}
+	tx.Commit()
+	return nil
+}
+
+// updateUploadStatus updates the status for the file specified with p.
+func (app *Syncer) updateUploadStatus(p string) error {
+	tx, err := app.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(UPDATEUPLOADSTATUS)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(p)
+	if err != nil {
+		return err
+	}
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// inFilters checks to see if the name of the file has one of the extensions listed in the filters slice, it returns true.
 func inFilters(name string, filters []string) bool {
 	for _, filter := range filters {
 		if strings.HasSuffix(name, filter) {
@@ -206,13 +200,17 @@ func inFilters(name string, filters []string) bool {
 	}
 	return false
 }
+
+// localize converts paths to windows paths if needed, has its own function for future needs.
 func (app *Syncer) localize(s string) string {
 	s = filepath.FromSlash(s)
 	return s
 
 }
 
-func (app *Syncer) PutObject(ctx context.Context, obj string, deep bool) error {
+// putObject actially performs the uploading to the S3 bucket for the file (path) specified by obj.
+// if deep is true, will put it in glacier deep storage.
+func (app *Syncer) putObject(ctx context.Context, obj string, deep bool) error {
 
 	f, err := os.Open(obj)
 	if err != nil {
@@ -237,6 +235,8 @@ func (app *Syncer) PutObject(ctx context.Context, obj string, deep bool) error {
 
 }
 
+// get lastModDate returns the last moidified date for the file specified by f (file path).
+// Returns unix time
 func getLastModDate(f string) (int64, error) {
 	fileinfo, err := os.Stat(f)
 	if err != nil {
@@ -246,6 +246,7 @@ func getLastModDate(f string) (int64, error) {
 	return atime, nil
 }
 
+// recordExists checks to see if there is a matching record for the provided p (file path) and modified time modtime.
 func (app *Syncer) recordExists(p string, modtime int64) (bool, error) {
 	var res string
 	err := app.db.QueryRow(SELECTRECORD, p, modtime).Scan(&res)

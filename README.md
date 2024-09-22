@@ -68,4 +68,7 @@ OPTIONS:
 
 This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see the LICENSE.md file for details
 
-## Acknowledgments
+## TODO
+ * Add functionality to catalog and compare the S3 buck with the local manifest
+ * Improve error information
+ * Add download functionality

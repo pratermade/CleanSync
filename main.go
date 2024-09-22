@@ -74,7 +74,10 @@ func sync(bucket string, p string, filters []string, deep bool) error {
 		S3Client:   client,
 	}
 
-	app.InitDb("manifest.db")
+	err = app.InitDb("manifest.db")
+	if err != nil {
+		return err
+	}
 
 	// get a list of the actual files in the folder
 	fileMap, err := app.WalkAndHash(filters)
@@ -94,6 +97,7 @@ func sync(bucket string, p string, filters []string, deep bool) error {
 		return err
 	}
 
+	// Upload the files that need it
 	err = app.UploadDiffs(ctx, uploads, deep)
 	if err != nil {
 		return err
@@ -110,21 +114,4 @@ func getAwsClient(ctx context.Context) (*s3.Client, error) {
 
 	client := s3.NewFromConfig(cfg)
 	return client, nil
-}
-
-func diffMaps(maniMap map[string]string, fileMap map[string]string) map[string]string {
-	if maniMap == nil {
-		return fileMap
-	}
-	resMap := make(map[string]string)
-	for fp, h := range fileMap {
-		val, ok := maniMap[fp]
-		if ok {
-			if val == h {
-				continue
-			}
-		}
-		resMap[fp] = h
-	}
-	return nil
 }
