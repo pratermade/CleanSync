@@ -59,7 +59,6 @@ OPTIONS:
    --help, -h                                             show help
 
 ```
-```
 
 ## Version History
 
