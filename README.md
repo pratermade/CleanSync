@@ -23,7 +23,7 @@ After it is built, copy it to where you want it to live. It will create a manife
 
 
 ```
-s3sync -help for information
+s3sync -help # for information
 .\s3sync.exe sync -path=x:\videos -bucket=my-backup-bucket -filter=mkv -filter=mp4 -deep # example command
 ```
 
@@ -41,8 +41,10 @@ COMMANDS:
 GLOBAL OPTIONS:
    --help, -h  show help
 ```
+
 *Subcommands* 
 
+```
 NAME:
    s3sync sync - upload new files to the provided bucket
 
