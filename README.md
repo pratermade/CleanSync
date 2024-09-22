@@ -57,7 +57,6 @@ OPTIONS:
    --filter value, -f value [ --filter value, -f value ]  file types to filter for. Can be specified multiple times for multiple file types.
    --deep, -d                                             deep archive in S3 (default: false)
    --help, -h                                             show help
-
 ```
 
 ## Version History
