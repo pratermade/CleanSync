@@ -63,6 +63,8 @@ OPTIONS:
 
 * 0.1
     * Initial Release
+* 0.2
+    * Added file splitting for failes greater than 4GB
 
 ## License
 
