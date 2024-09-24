@@ -59,14 +59,45 @@ func TestUpdateRecords(t *testing.T) {
 
 }
 
-func TestPutObject(t *testing.T) {
+func TestRecordParts(t *testing.T) {
 	Init()
-	obj := "C:\\Users\\pratersm\\Documents\\WebSites\\yci-www\\images\\about_background-min.jpeg"
-	err := app.PutObject(context.Background(), obj, false)
+	parts := []string{
+		"C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part0",
+		"C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part1",
+		"C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part2",
+		"C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part3",
+		"C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part4",
+		"C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part5",
+		"C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part6",
+	}
+	err := app.recordParts(1, parts)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+}
+
+func TestPutObject(t *testing.T) {
+	Init()
+	obj := "X:\\shows\\Battlestar Galactica (2004)\\Season 4\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4"
+	err := app.updateRecord(obj, 123456)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = app.putObject(context.Background(), obj, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateUploadStatusPart(t *testing.T) {
+	Init()
+	part := "C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync3030611028\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4.part0"
+	err := app.updateUploadStatusPart(part)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func getAwsClient(ctx context.Context) (*s3.Client, error) {

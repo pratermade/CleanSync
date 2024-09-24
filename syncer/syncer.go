@@ -3,9 +3,10 @@ package syncer
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"s3sync/splitter"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -20,50 +21,6 @@ type Syncer struct {
 	FolderPath string
 	S3Client   *s3.Client
 	Bucket     string
-}
-
-const INSERTRECORD = "insert into videos values(?, ?, ?)"
-const UPSERTRECORD = "insert into videos values(?, ?, ?) on conflict(filepath) do update set (modified, uploaded) = (?,?)"
-const SELECTRECORD = "select filepath from videos where filepath = ? and modified = ?"
-const CREATETABLE = "create table videos (filepath text primary key, modified integer, uploaded integer)"
-const UPDATEUPLOADSTATUS = "update videos set uploaded = 1 where filepath = ?"
-const SELECTUPLOADLIST = "select filepath from videos where uploaded = false"
-
-// InitDb gets the db if it already exists, if not it creates and preps a new one.
-func (app *Syncer) InitDb(dbpath string) error {
-	db, err := sql.Open("sqlite3", dbpath)
-
-	if err != nil {
-		return err
-	}
-	app.db = db
-	if _, err := os.Stat(dbpath); errors.Is(err, os.ErrNotExist) {
-		// db does not exist, c reate a new one
-
-		_, err = app.db.Exec(CREATETABLE)
-		if err != nil {
-			return err
-		}
-	}
-	// db exists, just set it
-	return nil
-}
-
-// GetUploadList queries the db and returns a slice of files that need updated.
-func (app *Syncer) GetUploadList() ([]string, error) {
-	rows, err := app.db.Query(SELECTUPLOADLIST)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var res []string
-	for rows.Next() {
-		var p string
-		rows.Scan(&p)
-		res = append(res, p)
-	}
-
-	return res, nil
 }
 
 // UploadDiffs uploads the files(paths) in the diffs slice, will commit to glacier deep archive if deep is set to true
@@ -139,58 +96,6 @@ func (app *Syncer) WalkAndHash(filters []string) (map[string]int64, error) {
 	return retMap, nil
 }
 
-// updateRecord updates or inserts an individual record with the p path and the last mod date specified by mod
-// checks to see if the record needs updating first, only will update if the modified date has changed
-func (app *Syncer) updateRecord(p string, mod int64) error {
-	tx, err := app.db.Begin()
-	if err != nil {
-		return err
-	}
-
-	query, err := tx.Prepare(UPSERTRECORD)
-	if err != nil {
-		return err
-	}
-	defer query.Close()
-
-	exists, err := app.recordExists(p, mod)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	_, err = query.Exec(p, mod, 0, mod, 0)
-	if err != nil {
-		return err
-	}
-	tx.Commit()
-	return nil
-}
-
-// updateUploadStatus updates the status for the file specified with p.
-func (app *Syncer) updateUploadStatus(p string) error {
-	tx, err := app.db.Begin()
-	if err != nil {
-		return err
-	}
-	stmt, err := tx.Prepare(UPDATEUPLOADSTATUS)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-	_, err = stmt.Exec(p)
-	if err != nil {
-		return err
-	}
-	err = tx.Commit()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // inFilters checks to see if the name of the file has one of the extensions listed in the filters slice, it returns true.
 func inFilters(name string, filters []string) bool {
 	for _, filter := range filters {
@@ -210,7 +115,38 @@ func (app *Syncer) localize(s string) string {
 
 // putObject actially performs the uploading to the S3 bucket for the file (path) specified by obj.
 // if deep is true, will put it in glacier deep storage.
+// Here is where the logic will live that will split files if they are too big
 func (app *Syncer) putObject(ctx context.Context, obj string, deep bool) error {
+	// Lets check the size first, if it is over 5GB ware are going to need to split it.
+	info, err := os.Stat(obj)
+	if err != nil {
+		return err
+	}
+
+	if info.Size() > 4294967296 {
+		// Update the record
+		id, err := app.setMultipart(obj)
+		if err != nil {
+			return err
+		}
+
+		spinnerInfo, err := pterm.DefaultSpinner.Start("Splitting up a rather large file")
+		if err != nil {
+			return err
+		}
+		objs, err := splitter.SplitFile(obj)
+		if err != nil {
+			return err
+		}
+		defer splitter.CleanUp(objs)
+		// Record Records of the parts
+		err = app.recordParts(id, objs)
+		if err != nil {
+			return err
+		}
+		spinnerInfo.Success()
+		return app.putObjs(ctx, objs, deep)
+	}
 
 	f, err := os.Open(obj)
 	if err != nil {
@@ -235,6 +171,30 @@ func (app *Syncer) putObject(ctx context.Context, obj string, deep bool) error {
 
 }
 
+func (app Syncer) putObjs(ctx context.Context, objs []string, deep bool) error {
+	count := len(objs)
+
+	for i, obj := range objs {
+		spinnerInfo, err := pterm.DefaultSpinner.Start(fmt.Sprintf("uploading %d/%d files", i, count))
+		if err != nil {
+			return err
+		}
+
+		err = app.putObject(ctx, obj, deep)
+		if err != nil {
+			return err
+		}
+		// update the upload status on the parts
+		err = app.updateUploadStatusPart(obj)
+		if err != nil {
+			return err
+		}
+		spinnerInfo.Success(fmt.Sprintf("Done uploading part %d", i))
+	}
+
+	return nil
+}
+
 // get lastModDate returns the last moidified date for the file specified by f (file path).
 // Returns unix time
 func getLastModDate(f string) (int64, error) {
@@ -244,17 +204,4 @@ func getLastModDate(f string) (int64, error) {
 	}
 	atime := fileinfo.ModTime().Unix()
 	return atime, nil
-}
-
-// recordExists checks to see if there is a matching record for the provided p (file path) and modified time modtime.
-func (app *Syncer) recordExists(p string, modtime int64) (bool, error) {
-	var res string
-	err := app.db.QueryRow(SELECTRECORD, p, modtime).Scan(&res)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
