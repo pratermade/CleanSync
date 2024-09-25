@@ -64,9 +64,9 @@ OPTIONS:
 * 0.1
     * Initial Release
 * 0.2
-    * Added file splitting for failes greater than 4GB
+    * Added file splitting for files greater than 4GB
 * 0.3
-   * Cleaned up cli output. Now it is simplier, but accurate.
+   * Cleaned up cli output. Now it is simmpler, but accurate.
 
 ## License
 
