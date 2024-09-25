@@ -65,6 +65,8 @@ OPTIONS:
     * Initial Release
 * 0.2
     * Added file splitting for failes greater than 4GB
+* 0.3
+   * Cleaned up cli output. Now it is simplier, but accurate.
 
 ## License
 
@@ -74,3 +76,6 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
  * Add functionality to catalog and compare the S3 buck with the local manifest
  * Improve error information
  * Add download functionality
+
+## Bugs
+ 

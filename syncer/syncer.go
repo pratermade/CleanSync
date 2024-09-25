@@ -30,25 +30,26 @@ func (app *Syncer) UploadDiffs(ctx context.Context, diffs []string, deep bool) e
 		pterm.Success.Println("No files to update!")
 		return nil
 	}
-	multi := pterm.DefaultMultiPrinter
-	pb, err := pterm.DefaultProgressbar.WithTotal(count).WithWriter(multi.NewWriter()).Start("Uploading files")
-	if err != nil {
-		return err
-	}
-	multi.Start()
-	for _, v := range diffs {
-		pb.Increment()
-		err := app.putObject(ctx, v, deep)
+
+	for i, v := range diffs {
+		spinnerInfo, err := pterm.DefaultSpinner.Start(fmt.Sprintf("Uploading file: %s. %d/%d", v, i+1, count))
 		if err != nil {
+			spinnerInfo.Fail(err)
+			return err
+		}
+		err = app.putObject(ctx, v, deep)
+		if err != nil {
+			spinnerInfo.Fail(err)
 			return err
 		}
 		err = app.updateUploadStatus(v)
 		if err != nil {
+			spinnerInfo.Fail(err)
 			return err
 		}
+		spinnerInfo.Success(fmt.Sprintf("Successfully uploaded file: %s. %d/%d", v, i+1, count))
 	}
-	pb.Increment()
-	multi.Stop()
+
 	return nil
 }
 
@@ -175,7 +176,7 @@ func (app Syncer) putObjs(ctx context.Context, objs []string, deep bool) error {
 	count := len(objs)
 
 	for i, obj := range objs {
-		spinnerInfo, err := pterm.DefaultSpinner.Start(fmt.Sprintf("uploading %d/%d files", i, count))
+		spinnerInfo, err := pterm.DefaultSpinner.Start(fmt.Sprintf("uploading part: %s. %d/%d files", obj, i, count))
 		if err != nil {
 			return err
 		}
