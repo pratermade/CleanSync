@@ -61,13 +61,15 @@ OPTIONS:
 
 ## Version History
 
-* 0.1
+* 0.0.1
     * Initial Release
-* 0.2
+* v0.0.2
     * Added file splitting for files greater than 4GB
-* 0.3
+* v0.0.3
    * Cleaned up cli output. Now it is simpler, but accurate.
-* 0.4
+* v0.0.4 
+   * started tagging versions
+* v0.0.5
    * More cli output fixes
 
 ## License
