@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"s3sync/splitter"
@@ -34,10 +35,10 @@ func (app *Syncer) UploadDiffs(ctx context.Context, diffs []string, deep bool) e
 	for i, v := range diffs {
 		spinnerInfo, err := pterm.DefaultSpinner.Start(fmt.Sprintf("Uploading file: %s. %d/%d", v, i+1, count))
 		if err != nil {
-			spinnerInfo.Fail(err)
 			return err
 		}
-		err = app.putObject(ctx, v, deep)
+
+		err = app.putObject(ctx, v, spinnerInfo, deep)
 		if err != nil {
 			spinnerInfo.Fail(err)
 			return err
@@ -117,36 +118,21 @@ func (app *Syncer) localize(s string) string {
 // putObject actially performs the uploading to the S3 bucket for the file (path) specified by obj.
 // if deep is true, will put it in glacier deep storage.
 // Here is where the logic will live that will split files if they are too big
-func (app *Syncer) putObject(ctx context.Context, obj string, deep bool) error {
+func (app *Syncer) putObject(ctx context.Context, obj string, spinner1 *pterm.SpinnerPrinter, deep bool) error {
 	// Lets check the size first, if it is over 5GB ware are going to need to split it.
+
 	info, err := os.Stat(obj)
 	if err != nil {
 		return err
 	}
 
 	if info.Size() > 4294967296 {
-		// Update the record
-		id, err := app.setMultipart(obj)
+		spinner1.Warning(fmt.Sprintf("%s too big for S3, Splitting into multiple files.", obj))
+		pieces, err := app.splitObject(obj, info)
 		if err != nil {
 			return err
 		}
-
-		spinnerInfo, err := pterm.DefaultSpinner.Start("Splitting up a rather large file")
-		if err != nil {
-			return err
-		}
-		objs, err := splitter.SplitFile(obj)
-		if err != nil {
-			return err
-		}
-		defer splitter.CleanUp(objs)
-		// Record Records of the parts
-		err = app.recordParts(id, objs)
-		if err != nil {
-			return err
-		}
-		spinnerInfo.Success()
-		return app.putObjs(ctx, objs, deep)
+		return app.putObjs(ctx, pieces, deep)
 	}
 
 	f, err := os.Open(obj)
@@ -172,16 +158,60 @@ func (app *Syncer) putObject(ctx context.Context, obj string, deep bool) error {
 
 }
 
+func (app *Syncer) splitObject(obj string, info fs.FileInfo) ([]string, error) {
+	id, err := app.setMultipart(obj)
+	if err != nil {
+		return nil, err
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	progress := make(chan string)
+	retErr := make(chan error)
+	var pieces []string
+	count := 0
+	go splitter.SplitFile(obj, progress, retErr)
+	spinnerInfo, err := pterm.DefaultSpinner.Start(fmt.Sprintf("Splitting %s", obj))
+	if err != nil {
+		return nil, err
+	}
+	for {
+		select {
+		case piece := <-progress:
+			pieces = append(pieces, piece)
+			count++
+			spinnerInfo.UpdateText(fmt.Sprintf("Piece: %s created successfully, now creating piece %d", piece, count))
+		case err = <-retErr:
+			if err == nil {
+				spinnerInfo.Success(fmt.Sprintf("Done splitting. Split %s into %d files", info.Name(), len(pieces)))
+				goto End
+			}
+			spinnerInfo.Fail(err)
+			goto End
+		}
+	}
+End:
+
+	defer splitter.CleanUp(pieces)
+
+	err = app.recordParts(id, pieces)
+	if err != nil {
+		return nil, err
+	}
+	return pieces, nil
+}
+
 func (app Syncer) putObjs(ctx context.Context, objs []string, deep bool) error {
-	count := len(objs)
+	spinnerInfo, err := pterm.DefaultSpinner.Start("uploading parts")
+	if err != nil {
+		return err
+	}
 
 	for i, obj := range objs {
-		spinnerInfo, err := pterm.DefaultSpinner.Start(fmt.Sprintf("uploading part: %s. %d/%d files", obj, i, count))
-		if err != nil {
-			return err
-		}
-
-		err = app.putObject(ctx, obj, deep)
+		spinnerInfo.UpdateText(fmt.Sprintf("Uploading %s part %d/%d", obj, i+1, len(objs)))
+		err = app.putObject(ctx, obj, spinnerInfo, deep)
 		if err != nil {
 			return err
 		}
@@ -190,9 +220,8 @@ func (app Syncer) putObjs(ctx context.Context, objs []string, deep bool) error {
 		if err != nil {
 			return err
 		}
-		spinnerInfo.Success(fmt.Sprintf("Done uploading part %d", i))
 	}
-
+	spinnerInfo.Success(fmt.Sprintf("Uploaded parts 0 - %d", len(objs)))
 	return nil
 }
 

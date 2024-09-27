@@ -15,7 +15,7 @@ func TestSplitFile(t *testing.T) {
 }
 
 func TestRecombineFile(t *testing.T) {
-	prefix := "C:\\Users\\pratersm\\AppData\\Local\\Temp\\s3sync936122437\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4"
+	prefix := "C:\\Users\\pratermade\\AppData\\Local\\Temp\\s3sync936122437\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4"
 	res, err := RecombineFile(prefix)
 	if err != nil {
 		t.Fatal(err)

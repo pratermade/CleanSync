@@ -67,6 +67,8 @@ OPTIONS:
     * Added file splitting for files greater than 4GB
 * 0.3
    * Cleaned up cli output. Now it is simpler, but accurate.
+* 0.4
+   * More cli output fixes
 
 ## License
 
@@ -79,3 +81,4 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
 
 ## Bugs
  
+ * when a file is in the manifest and is not found for upload or splitting, remove it from the database and move on. 
