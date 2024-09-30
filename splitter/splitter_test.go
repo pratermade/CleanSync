@@ -6,11 +6,24 @@ import (
 
 func TestSplitFile(t *testing.T) {
 	org := "X:\\shows\\Battlestar Galactica (2004)\\Season 4\\Battlestar Galactica (2003)  S04e19e20  Daybreak (1080P Bluray X265 Rzerox)-1.mp4"
-	res, err := SplitFile(org)
-	if err != nil {
-		t.Fatal(err)
+	si := &SplitInfo{
+		count:  0,
+		offset: 0,
 	}
-	t.Fatalf("Success: %s", res)
+	for {
+		info, err := SplitFile(org, si)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.eof {
+			break
+		}
+		si.count = info.count
+		si.offset = info.offset
+		si.tempFolder = info.tempFolder
+	}
+
+	t.Log(si.tempFolder)
 
 }
 

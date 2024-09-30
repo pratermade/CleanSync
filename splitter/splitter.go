@@ -7,49 +7,101 @@ import (
 	"path/filepath"
 )
 
-const chunkSize = 2 * 1024 * 1024 * 1024 // 2GB
+const chunkSize = int64(2 * 1024 * 1024 * 1024) // 2GB
+// const chunkSize = int64(20 * 1024 * 1024) // 2GB
 
-func SplitFile(filePath string, progress chan string, retErr chan error) {
-	file, err := os.Open(filePath)
+type SplitInfo struct {
+	OrgFilePath string
+	Name        string
+	Offset      int64
+	Eof         bool
+	Count       int
+	TempFolder  string
+}
+
+func SplitFile(info *SplitInfo) (*SplitInfo, error) {
+	splitInfoRes := &SplitInfo{
+		Eof:         false,
+		Name:        "",
+		Count:       info.Count,
+		TempFolder:  info.TempFolder,
+		Offset:      info.Offset,
+		OrgFilePath: info.OrgFilePath,
+	}
+	if info.TempFolder == "" {
+		tmpDir, err := os.MkdirTemp("", "s3sync")
+		if err != nil {
+			return nil, err
+		}
+		splitInfoRes.TempFolder = tmpDir
+	}
+	file, err := os.Open(splitInfoRes.OrgFilePath)
 	if err != nil {
-		retErr <- err
+		return nil, err
 	}
 	defer file.Close()
 
-	var chunkIndex int
 	buffer := make([]byte, chunkSize)
-	tmpDir, err := os.MkdirTemp("", "s3sync")
+
+	partPath := fmt.Sprintf("%s.part%d", filepath.Base(splitInfoRes.OrgFilePath), info.Count)
+	partPath = filepath.Join(splitInfoRes.TempFolder, partPath)
+	partFile, err := os.Create(partPath)
 	if err != nil {
-		retErr <- err
+		return nil, err
 	}
-	for {
-		n, err := file.Read(buffer)
-		if n > 0 {
-
-			chunkFilePath := fmt.Sprintf("%s.part%d", filepath.Base(filePath), chunkIndex)
-			chunkFilePath = filepath.Join(tmpDir, chunkFilePath)
-			chunkFile, err := os.Create(chunkFilePath)
-			if err != nil {
-				retErr <- fmt.Errorf("failed to create chunk file: %v", err)
-			}
-			_, err = chunkFile.Write(buffer[:n])
-			chunkFile.Close()
-			if err != nil {
-				retErr <- fmt.Errorf("failed to write chunk file: %v", err)
-			}
-
-			progress <- chunkFilePath
-			chunkIndex++
-		}
+	defer partFile.Close()
+	n, err := file.ReadAt(buffer, info.Offset)
+	if err != nil {
 		if err == io.EOF {
-			break
+
+			splitInfoRes.Eof = true
+			splitInfoRes.Offset = 0
+			splitInfoRes.Name = partPath
+			_, err = partFile.Write(buffer[:n])
+			if err != nil {
+				return nil, err
+			}
+			return splitInfoRes, nil
 		}
-		if err != nil {
-			retErr <- fmt.Errorf("failed to read file: %v", err)
-		}
+		return nil, err
 	}
-	retErr <- nil
+	_, err = partFile.Write(buffer[:n])
+	if err != nil {
+		return nil, err
+	}
+	splitInfoRes.Name = partPath
+	splitInfoRes.Offset = splitInfoRes.Offset + chunkSize
+	splitInfoRes.Count++
+	return splitInfoRes, nil
 }
+
+// for {
+// 	n, err := file.Read(buffer)
+// 	if n > 0 {
+// 		chunkFilePath := fmt.Sprintf("%s.part%d", filepath.Base(filePath), chunkIndex)
+// 		chunkFilePath = filepath.Join(tmpDir, chunkFilePath)
+// 		chunkFile, err := os.Create(chunkFilePath)
+// 		if err != nil {
+// 			retErr <- fmt.Errorf("failed to create chunk file: %v", err)
+// 		}
+// 		_, err = chunkFile.Write(buffer[:n])
+// 		chunkFile.Close()
+// 		if err != nil {
+// 			retErr <- fmt.Errorf("failed to write chunk file: %v", err)
+// 		}
+
+// 		progress <- chunkFilePath
+// 		chunkIndex++
+// 	}
+// 	if err == io.EOF {
+// 		break
+// 	}
+// 	if err != nil {
+// 		retErr <- fmt.Errorf("failed to read file: %v", err)
+// 	}
+// }
+// retErr <- nil
+// }
 
 func RecombineFile(partPrefix string) (string, error) {
 
