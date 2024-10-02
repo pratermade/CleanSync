@@ -11,57 +11,52 @@ const chunkSize = int64(2 * 1024 * 1024 * 1024) // 2GB
 // const chunkSize = int64(20 * 1024 * 1024) // 2GB
 
 type SplitInfo struct {
-	OrgFilePath string
-	Name        string
-	Offset      int64
-	Eof         bool
-	Count       int
-	TempFolder  string
+	OrgFilePath     string
+	PartPath        string
+	PreviousPart    string
+	Offset          int64
+	Eof             bool
+	Count           int
+	TempFolder      string
+	PercentComplete float64
+	OrgFileSize     int64
 }
 
 func SplitFile(info *SplitInfo) (*SplitInfo, error) {
-	splitInfoRes := &SplitInfo{
-		Eof:         false,
-		Name:        "",
-		Count:       info.Count,
-		TempFolder:  info.TempFolder,
-		Offset:      info.Offset,
-		OrgFilePath: info.OrgFilePath,
-	}
-	if info.TempFolder == "" {
-		tmpDir, err := os.MkdirTemp("", "s3sync")
-		if err != nil {
-			return nil, err
-		}
-		splitInfoRes.TempFolder = tmpDir
-	}
-	file, err := os.Open(splitInfoRes.OrgFilePath)
+
+	file, err := os.Open(info.OrgFilePath)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	info.OrgFileSize = fileInfo.Size()
+
 	buffer := make([]byte, chunkSize)
 
-	partPath := fmt.Sprintf("%s.part%d", filepath.Base(splitInfoRes.OrgFilePath), info.Count)
-	partPath = filepath.Join(splitInfoRes.TempFolder, partPath)
-	partFile, err := os.Create(partPath)
+	partFile, err := os.Create(info.PartPath)
 	if err != nil {
 		return nil, err
 	}
 	defer partFile.Close()
+
+	info.PreviousPart = filepath.Base(info.PartPath)
 	n, err := file.ReadAt(buffer, info.Offset)
 	if err != nil {
 		if err == io.EOF {
 
-			splitInfoRes.Eof = true
-			splitInfoRes.Offset = 0
-			splitInfoRes.Name = partPath
+			info.Eof = true
+			info.Offset = 0
 			_, err = partFile.Write(buffer[:n])
 			if err != nil {
 				return nil, err
 			}
-			return splitInfoRes, nil
+			return info, nil
 		}
 		return nil, err
 	}
@@ -69,10 +64,12 @@ func SplitFile(info *SplitInfo) (*SplitInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	splitInfoRes.Name = partPath
-	splitInfoRes.Offset = splitInfoRes.Offset + chunkSize
-	splitInfoRes.Count++
-	return splitInfoRes, nil
+	info.Count++
+
+	info.Offset = info.Offset + chunkSize
+	info.PercentComplete = (float64(info.Offset) + float64(chunkSize)) / float64(info.OrgFileSize)
+
+	return info, nil
 }
 
 // for {
