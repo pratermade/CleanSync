@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"s3sync/syncer"
+	"s3sync/filesystem"
+	"s3sync/localsql"
+	"s3sync/messages"
+	"s3sync/ui"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/urfave/cli/v2"
 )
 
@@ -56,11 +59,11 @@ func main() {
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
-		fmt.Println(err)
+		panic(err)
 	}
 }
 
-func sync(bucket string, p string, filters []string, deep bool) error {
+func sync(bucket string, folderPath string, filters []string, deep bool) error {
 	ctx := context.Background()
 
 	client, err := getAwsClient(ctx)
@@ -68,37 +71,44 @@ func sync(bucket string, p string, filters []string, deep bool) error {
 		return err
 	}
 
-	app := syncer.Syncer{
-		Bucket:     bucket,
-		FolderPath: p,
-		S3Client:   client,
-	}
-
-	err = app.InitDb("manifest.db")
+	db, err := localsql.InitDb("manifest.db")
 	if err != nil {
 		return err
 	}
 
-	// get a list of the actual files in the folder
-	fileMap, err := app.WalkAndHash(filters)
+	files, err := filesystem.WalkAndHash(filters, folderPath)
 	if err != nil {
 		return err
 	}
 
-	// Update the manifest with any new or updated files
-	err = app.UpdateManifest(fileMap)
+	err = db.UpdateManifest(files)
 	if err != nil {
 		return err
 	}
 
-	// Get any items that has not been set as uploaded
-	uploads, err := app.GetUploadList()
+	uploads, err := db.GetUploadList()
 	if err != nil {
 		return err
 	}
 
-	// Upload the files that need it
-	err = app.UploadDiffs(ctx, uploads, deep)
+	// So we can monitor the progress of the file file writing
+	progressor := &messages.ProgressReadWriter{}
+	ch := make(chan messages.ProgressMsg)
+	go progressor.GetProgress(ch)
+	//
+
+	// This should send it to the execution loop
+	prog := tea.NewProgram(ui.NewModel(folderPath, client, uploads, bucket, db, filters, progressor, deep))
+
+	//Sends progress status for video reads/writes
+	go func() {
+		for {
+			update := <-ch
+			prog.Send(update)
+		}
+	}()
+
+	_, err = prog.Run()
 	if err != nil {
 		return err
 	}

@@ -4,7 +4,7 @@ s3sync
 
 ## Description
 
-A little personal project I use to keep my videos backed up to S3. I've spent amy hours processing my video library so I thought is was worth a bit of effort and a few buck a month to upload them to the S3 Glacier Deep Archive in the case that anything happens to my local media.
+A little personal project I use to keep my videos backed up to S3. I've spent many hours processing my video library so I thought is was worth a bit of effort and a few buck a month to upload them to the S3 Glacier Deep Archive in the case that anything happens to my local media.
 
 ## Getting Started
 
@@ -72,15 +72,26 @@ OPTIONS:
 * v0.0.5
    * More cli output fixes
 
+
 ## License
 
 This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see the LICENSE.md file for details
 
 ## TODO
- * Add functionality to catalog and compare the S3 buck with the local manifest
+ * Add functionality to catalog and compare the S3 bucket with the local manifest
  * Improve error information
  * Add download functionality
+ * Change UI to https://github.com/charmbracelet/bubbletea/tree/master/examples
 
 ## Bugs
  
  * when a file is in the manifest and is not found for upload or splitting, remove it from the database and move on. 
+ * make the split files 2GB
+ * need to add overall status to cli output
+
+ ## Notes
+
+ In mid process in the conversion to charmbracelet. I think I have the concepts worked out. I need to finish working through the upload section of the logic.
+ Working on fixing live updates to the progress bar for splitting files up
+
+ Integrate "active" properties on the progress readers to select when a progress bar update should be active.

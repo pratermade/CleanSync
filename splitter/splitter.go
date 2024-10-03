@@ -7,37 +7,49 @@ import (
 	"os"
 	"path/filepath"
 	"s3sync/messages"
-	"time"
 )
 
 const chunkSize = int64(16 * 1024 * 1024) // 16mb chunks x 128 iterations = 2GB pieces
-// const chunkSize = int64(20 * 1024 * 1024) // 2GB
+const partSize = 2 * 1024 * 1024 * 1024   // 2GB
 
-func (pr *ProgressWriter) GetProgress(ch chan messages.ProgressMsg) {
-	for {
-		time.Sleep(time.Second)
-		if pr.writen != 0 {
-			progress := float64(pr.writen) / float64(pr.total)
-			ch <- messages.ProgressMsg{
-				Progress: progress,
-			}
-			continue
-		}
-		ch <- messages.ProgressMsg{Progress: 0.0}
-	}
-}
+// func (pw *ProgressWriter) GetProgress(ch chan messages.ProgressMsg) {
+// 	for {
+// 		time.Sleep(250 * time.Millisecond)
+// 		if pw.writen != 0 {
+// 			progress := float64(pw.writen) / float64(pw.toWrite)
+// 			ch <- messages.ProgressMsg{
+// 				Progress: progress,
+// 				Action:   messages.WriteAction,
+// 			}
+// 			continue
+// 		}
+// 		ch <- messages.ProgressMsg{
+// 			Progress: 0.0,
+// 			Action:   messages.None,
+// 		}
+// 	}
+// }
 
-type ProgressWriter struct {
-	writer io.Writer
-	total  int64
-	writen int64
-}
+// func (pw *ProgressWriter) ResetProgress() {
+// 	pw.toWrite = 0
+// 	pw.writen = 0
+// }
 
-func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
-	n, err = pw.writer.Write(p)
-	pw.writen += int64(n)
-	return n, err
-}
+// type ProgressWriter struct {
+// 	writer  io.Writer
+// 	toWrite int64
+// 	writen  int64
+// }
+
+// func (pw *ProgressWriter) Write(p []byte) (n int, err error) {
+
+// 	n, err = pw.writer.Write(p)
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	pw.writen += int64(n)
+// 	return n, err
+// }
 
 type SplitInfo struct {
 	OrgFilePath     string
@@ -51,7 +63,7 @@ type SplitInfo struct {
 	OrgFileSize     int64
 }
 
-func SplitFile(info *SplitInfo) (*SplitInfo, error) {
+func SplitFile(info *SplitInfo, pw *messages.ProgressReadWriter) (*SplitInfo, error) {
 
 	file, err := os.Open(info.OrgFilePath)
 	if err != nil {
@@ -64,11 +76,6 @@ func SplitFile(info *SplitInfo) (*SplitInfo, error) {
 		return nil, err
 	}
 
-	pw := &ProgressWriter{
-		writer: bufio.NewWriter(file),
-		total:  fileInfo.Size(),
-	}
-
 	info.OrgFileSize = fileInfo.Size()
 
 	partFile, err := os.Create(info.PartPath)
@@ -77,15 +84,18 @@ func SplitFile(info *SplitInfo) (*SplitInfo, error) {
 	}
 	defer partFile.Close()
 
+	pw.Writer = bufio.NewWriter(partFile)
+	pw.ResetProgress()
+
 	info.PreviousPart = filepath.Base(info.PartPath)
-	for i := 0; i < 120; i++ { // 16 MB chunks * 128 iterations = 2GB files
-		n, err := writeChunk(file, pw, info.Offset, info.PartPath)
+	for i := 0; i < 128; i++ { // 16 MB chunks * 128 iterations = 2GB files
+		n, err := writeChunk(file, pw, info.Offset, info.OrgFileSize)
 		if err != nil {
 			if err == io.EOF {
 				// done, reached the end of the file
 				info.Eof = true
 				info.Offset = 0
-				break
+				return info, nil
 			}
 			return nil, err
 		}
@@ -95,16 +105,22 @@ func SplitFile(info *SplitInfo) (*SplitInfo, error) {
 	return info, nil
 }
 
-func writeChunk(reader *os.File, writer *ProgressWriter, offset int64, outfile string) (int, error) {
+func writeChunk(reader *os.File, writer *messages.ProgressReadWriter, offset int64, fullSize int64) (int, error) {
+	sizeLeft := fullSize - offset
+	writer.Size = sizeLeft % partSize
+	if sizeLeft >= partSize {
+		writer.Size = partSize
+	}
 	buffer := make([]byte, chunkSize)
 	n, err := reader.ReadAt(buffer, offset)
 	if err != nil {
 		if err == io.EOF {
+			eoferr := err
 			n, err = writer.Write(buffer[:n])
 			if err != nil {
 				return 0, err
 			}
-			return n, nil
+			return n, eoferr
 		}
 		return 0, err
 	}
