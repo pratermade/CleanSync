@@ -53,14 +53,13 @@ const partSize = 2 * 1024 * 1024 * 1024   // 2GB
 
 type SplitInfo struct {
 	OrgFilePath     string
-	PartPath        string
-	PreviousPart    string
+	Parts           []string
 	Offset          int64
 	Eof             bool
-	Count           int
 	TempFolder      string
 	PercentComplete float64
 	OrgFileSize     int64
+	Index           int
 }
 
 func SplitFile(info *SplitInfo, pw *messages.ProgressReadWriter) (*SplitInfo, error) {
@@ -78,7 +77,7 @@ func SplitFile(info *SplitInfo, pw *messages.ProgressReadWriter) (*SplitInfo, er
 
 	info.OrgFileSize = fileInfo.Size()
 
-	partFile, err := os.Create(info.PartPath)
+	partFile, err := os.Create(info.Parts[info.Index])
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +86,6 @@ func SplitFile(info *SplitInfo, pw *messages.ProgressReadWriter) (*SplitInfo, er
 	pw.Writer = bufio.NewWriter(partFile)
 	pw.ResetProgress()
 
-	info.PreviousPart = filepath.Base(info.PartPath)
 	for i := 0; i < 128; i++ { // 16 MB chunks * 128 iterations = 2GB files
 		n, err := writeChunk(file, pw, info.Offset, info.OrgFileSize)
 		if err != nil {
@@ -101,7 +99,7 @@ func SplitFile(info *SplitInfo, pw *messages.ProgressReadWriter) (*SplitInfo, er
 		}
 		info.Offset = info.Offset + int64(n)
 	}
-	info.Count++
+	info.Index++
 	return info, nil
 }
 

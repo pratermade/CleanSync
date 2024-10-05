@@ -22,82 +22,93 @@ func (m UploadModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "esc", "q":
 			return m, tea.Quit
 		}
-	case messages.SplitMsg:
-
-		// Get some initial states for the process
-		tmpDir, err := os.MkdirTemp("", "s3sync")
-		if err != nil {
-			return m, m.SendError(err)
-		}
-		m.indention = "    "
-		partName := fmt.Sprintf("%s.part%d", filepath.Base(msg.OrgFilePath), 0)
-		partPath := filepath.Join(tmpDir, partName)
-		info := &splitter.SplitInfo{
-			OrgFilePath: msg.OrgFilePath,
-			TempFolder:  tmpDir,
-			PartPath:    partPath,
-		}
-		name := filepath.Base(msg.OrgFilePath)
-		m.currentProcess = fmt.Sprintf("%s  Splitting Part: %s", m.indention, partName)
-		return m, tea.Batch(
-			tea.Printf("%s  %s is too big, splitting into parts.", flagMark, name),
-			m.splitCmd(info),
-		)
 
 	case *splitter.SplitInfo:
-		partname := filepath.Base(msg.PartPath)
 
-		// This is the exit point once the file is completly split
+		// This is the exit point once the file is completly split. We move on to uploading for the next step
 		if msg.Eof {
 			ctx := context.Background()
-			test := []string{
-				"test1", "test2",
+			uploadPartsCmd := m.uploadParts(ctx, msg.OrgFilePath, msg.Parts, 0)
+			m.currentProcess = fmt.Sprintf("%s  Uploading part: %s", m.indention, msg.Parts[0])
+			storage := "Standard Storage"
+			if m.deep {
+				storage = "Glacier Deep Archive"
 			}
 			return m, tea.Batch(
-				tea.Printf("%s%s  Splitting part: %s", m.indention, checkMark, partname),
-				m.uploadParts(ctx, test),
-				// progressCmd,
+				tea.Printf("%s%s  Uploading %d parts of %s to %s us %s", flagMark, m.indention, len(msg.Parts), filepath.Base(msg.OrgFilePath), m.bucket, storage),
+				uploadPartsCmd,
 			)
 		}
-		// Ths section is what is executed during the split
-		partPath := fmt.Sprintf("%s.part%d", filepath.Base(msg.OrgFilePath), msg.Count)
-		msg.PartPath = filepath.Join(msg.TempFolder, partPath)
-		partname = filepath.Base(msg.PartPath)
-		m.currentProcess = fmt.Sprintf("%s  Splitting Part: %s", m.indention, partname)
-		return m, tea.Batch(
-			tea.Printf("%s%s  Splitting part: %s", m.indention, checkMark, msg.PreviousPart),
+		//
+
+		msg.Parts = append(msg.Parts, fmt.Sprintf("%s.part%d", filepath.Base(msg.OrgFilePath), msg.Index))
+		m.indention = "   "
+		output := fmt.Sprintf("%s%s  1. Splitting part: %s", m.indention, checkMark, msg.Parts[msg.Index])
+		m.currentProcess = fmt.Sprintf("%s  2. Splitting part: %s", m.indention, msg.Parts[msg.Index])
+		return m, tea.Sequence(
 			m.splitCmd(msg),
+			tea.Printf(output),
 		)
 
 	case messages.UploadPartsMsg:
-		m.indention = ""
-		return m, tea.Sequence(
-			tea.Printf("%s%s  Uploading parts...", flagMark, m.indention),
-			tea.Quit,
+		m.indention = "\t"
+		pkg := msg.Parts[msg.Index]
+		m.progressor.ResetProgress()
+		m.currentProcess = fmt.Sprintf("%s  Uploading part: %s", m.indention, pkg)
+		if msg.Index >= len(msg.Parts) {
+			return m, tea.Batch(tea.Printf("%s%s Parts Uploaded for %s", m.indention, checkMark, msg.OriginalFile), m.uploadCmd(&messages.UploadMsg{Done: false}))
+		}
+		m.currentProcess = fmt.Sprintf("%s  Uploading part: %s", m.indention, pkg)
+		msg.Index++
+		ctx := context.Background()
+		return m, tea.Batch(
+			tea.Printf("%s%s Uploading part: %s", m.indention, checkMark, pkg),
+			m.uploadParts(ctx, msg.OriginalFile, msg.Parts, msg.Index),
 		)
-
-	case messages.ErrMsg:
-		// handle errorI guess
-		return m, tea.Quit
 	case messages.UploadMsg:
+		// Were going to check first to see if we needc to split the file up
+
 		pkg := m.toUpdate[m.index]
-		m.index++
-		// progressCmd := m.progress.SetPercent(float64(m.index+1.0) / float64(len(m.toUpdate)))
+		info, err := os.Stat(pkg)
+		if err != nil {
+			return m, m.SendError(err)
+		}
+
+		if info.Size() > 4294967296 {
+			si := &splitter.SplitInfo{
+				OrgFilePath: m.toUpdate[m.index],
+				Parts:       []string{},
+				OrgFileSize: info.Size(),
+			}
+			return m, tea.Sequence(
+				tea.Printf("%s%s  %s is too big, splitting into parts.", flagMark, m.indention, filepath.Base(pkg)),
+				m.splitCmd(si),
+			)
+		}
+		// Do the upload
+		ctx := context.Background()
+		err = m.doUpload(ctx, m.toUpdate[m.index], m.progressor, info.Size())
+		if err != nil {
+			return m, m.SendError(err)
+		}
+
 		if m.index >= len(m.toUpdate)-1 {
 			// Everything's been Downloaded. We're done!
 			m.done = true
 			return m, tea.Sequence(
 				// progressCmd,
-				tea.Printf("%s %s", checkMark, pkg), // print the last success message
-				tea.Quit,                            // exit the program
+				tea.Printf("%s %s", checkMark, m.toUpdate[m.index]), // print the last success message
+				tea.Quit, // exit the program
 			)
 		}
-
-		ctx := context.Background()
+		m.index++
 		return m, tea.Batch(
-			tea.Printf("%s %s", checkMark, msg.Name),
-			m.PutObject(ctx, m.toUpdate[m.index], m.progressor),
+			tea.Printf("%s %s", checkMark, pkg),
+			m.PutObjectCmd(ctx),
 		)
+	case messages.ErrMsg:
+		// handle errorI guess
+		return m, tea.Quit
 	case messages.ProgressMsg:
 		progressCmd := m.progress.SetPercent(msg.Progress)
 		return m, tea.Batch(progressCmd)

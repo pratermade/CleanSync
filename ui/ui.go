@@ -66,9 +66,7 @@ func NewModel(folderPath string, client *s3.Client, fileList []string, bucket st
 // Init is the entry point of the ui/program
 func (m UploadModel) Init() tea.Cmd {
 	ctx := context.Background()
-	upload := m.toUpdate[m.index]
-	m.index++
-	return tea.Batch(m.PutObject(ctx, upload, m.progressor), m.spinner.Tick)
+	return tea.Batch(m.PutObjectCmd(ctx), m.spinner.Tick)
 }
 
 // View is the initial state of the ui

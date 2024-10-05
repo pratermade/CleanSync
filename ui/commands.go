@@ -25,8 +25,12 @@ func (m *UploadModel) SendError(err error) tea.Cmd {
 }
 
 func (m *UploadModel) splitCmd(info *splitter.SplitInfo) tea.Cmd {
+	if len(info.Parts) == 0 {
+		return func() tea.Msg {
+			return info
+		}
+	}
 	return func() tea.Msg {
-
 		res, err := splitter.SplitFile(info, m.progressor)
 		if err != nil {
 			return errMsg{err}
@@ -36,54 +40,19 @@ func (m *UploadModel) splitCmd(info *splitter.SplitInfo) tea.Cmd {
 	}
 }
 
+func (m *UploadModel) uploadCmd(info *messages.UploadMsg) tea.Cmd {
+	return func() tea.Msg {
+		return info
+	}
+}
+
 // putObject actially performs the uploading to the S3 bucket for the file (path) specified by obj.
 // if deep is true, will put it in glacier deep storage.
 // Here is where the logic will live that will split files if they are too big
-func (m *UploadModel) PutObject(ctx context.Context, obj string, pr *messages.ProgressReadWriter) tea.Cmd {
+func (m *UploadModel) PutObjectCmd(ctx context.Context) tea.Cmd {
 
 	return func() tea.Msg {
-
-		// First check to see if it needs split up.
-		info, err := os.Stat(obj)
-		if err != nil {
-			return errMsg{err}
-		}
-
-		if info.Size() > 4294967296 {
-			return messages.SplitMsg{
-				OrgFilePath: obj,
-				OrgFileSize: info.Size(),
-			}
-		}
-
-		f, err := os.Open(obj)
-		if err != nil {
-			return errMsg{err}
-		}
-
-		defer f.Close()
-
-		pr.Reader = bufio.NewReader(f)
-		pr.Size = info.Size()
-
-		storageClass := types.StorageClassStandard
-		if m.deep {
-			storageClass = types.StorageClassDeepArchive
-		}
-
-		_, err = m.s3Client.PutObject(ctx, &s3.PutObjectInput{
-			Bucket:        aws.String(m.bucket),
-			Key:           aws.String(filesystem.Localize(obj)),
-			StorageClass:  storageClass,
-			Body:          pr,
-			ContentLength: &pr.Size,
-		})
-		if err != nil {
-			return errMsg{err}
-		}
-
 		dmsg := messages.UploadMsg{
-			Name: obj,
 			Done: false,
 		}
 
@@ -91,10 +60,61 @@ func (m *UploadModel) PutObject(ctx context.Context, obj string, pr *messages.Pr
 	}
 }
 
-func (m *UploadModel) uploadParts(ctx context.Context, parts []string) tea.Cmd {
+func (m *UploadModel) doUpload(ctx context.Context, partFilePath string, pr *messages.ProgressReadWriter, fileSize int64) error {
+	f, err := os.Open(partFilePath)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	pr.Reader = bufio.NewReader(f)
+
+	storageClass := types.StorageClassStandard
+	if m.deep {
+		storageClass = types.StorageClassDeepArchive
+	}
+	m.progressor.ResetProgress()
+	pr.Size = fileSize
+
+	_, err = m.s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(m.bucket),
+		Key:           aws.String(filesystem.Localize(partFilePath)),
+		StorageClass:  storageClass,
+		Body:          pr,
+		ContentLength: &pr.Size,
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *UploadModel) uploadParts(ctx context.Context, orgFile string, parts []string, i int) tea.Cmd {
 	return func() tea.Msg {
+		if i >= len(parts) {
+			return errMsg{}
+		}
+		if len(parts) > 0 {
+			f, err := os.Open(parts[i])
+			if err != nil {
+				return errMsg{err}
+			}
+			info, err := f.Stat()
+			if err != nil {
+				return errMsg{err}
+			}
+
+			err = m.doUpload(ctx, parts[i], m.progressor, info.Size())
+			if err != nil {
+				return errMsg{err}
+			}
+		}
+
 		uploadPartsM := messages.UploadPartsMsg{
-			Parts: parts,
+			OriginalFile: orgFile,
+			Parts:        parts,
+			Index:        i,
 		}
 		return uploadPartsM
 	}

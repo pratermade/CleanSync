@@ -6,13 +6,13 @@ import (
 )
 
 type UploadMsg struct {
-	Name string
 	Done bool
 }
 
 type UploadPartsMsg struct {
-	Parts []string
-	Done  bool
+	OriginalFile string
+	Parts        []string
+	Index        int
 }
 
 type SplitMsg struct {
@@ -87,6 +87,9 @@ func (pw *ProgressReadWriter) Write(p []byte) (n int, err error) {
 
 func (pr *ProgressReadWriter) Read(p []byte) (n int, err error) {
 	n, err = pr.Reader.Read(p)
+	if err != nil {
+		return 0, err
+	}
 	pr.Completed += int64(n)
 	return n, err
 }
