@@ -89,6 +89,7 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
  * Improve error information
  * Add download functionality
  * Change UI to https://github.com/charmbracelet/bubbletea/tree/master/examples
+ * Make it so we can remove commercials from entire directories
 
 ## Bugs
  
@@ -102,3 +103,5 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
  Working on fixing live updates to the progress bar for splitting files up
 
  Integrate "active" properties on the progress readers to select when a progress bar update should be active.
+
+ Added commercial removal subcommand - goal is to remove the commercials from a specified directory and upload to media server with one command. Right now can only specify on video at a time
