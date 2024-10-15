@@ -1,12 +1,12 @@
-package ui
+package sync
 
 import (
 	"bufio"
+	"cleansync/filesystem"
+	"cleansync/messages"
+	"cleansync/splitter"
 	"context"
 	"os"
-	"s3sync/filesystem"
-	"s3sync/messages"
-	"s3sync/splitter"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -60,7 +60,7 @@ func (m *UploadModel) PutObjectCmd(ctx context.Context) tea.Cmd {
 	}
 }
 
-func (m *UploadModel) doUpload(ctx context.Context, partFilePath string, pr *messages.ProgressReadWriter, fileSize int64) error {
+func (m *UploadModel) doUpload(ctx context.Context, partFilePath string, pr *filesystem.ProgressReadWriter, fileSize int64) error {
 	f, err := os.Open(partFilePath)
 	if err != nil {
 		return err

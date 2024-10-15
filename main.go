@@ -1,16 +1,10 @@
 package main
 
 import (
-	"context"
+	"cleansync/actions/adclear"
+	"cleansync/actions/sync"
 	"os"
-	"s3sync/filesystem"
-	"s3sync/localsql"
-	"s3sync/messages"
-	"s3sync/ui"
 
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/urfave/cli/v2"
 )
 
@@ -20,8 +14,31 @@ func main() {
 		Usage: "Sync with the provided s3 bucket",
 		Commands: []*cli.Command{
 			{
-				Name:  "sync",
-				Usage: "upload new files to the provided bucket",
+				Name:   "adclear",
+				Usage:  "Removes adds from the source and copies the resulting video to the destination",
+				Action: adclear.Clear,
+				Flags: []cli.Flag{
+					&cli.PathFlag{
+						Name:     "source",
+						Usage:    "The source file or folder, if it is a folder, it will attempt to process all video files. (currently mp4, mkv)",
+						Required: true,
+					},
+					&cli.PathFlag{
+						Name:     "dest",
+						Usage:    "The destination file or folder",
+						Required: true,
+					},
+					&cli.BoolFlag{
+						Name:     "skip_first",
+						Usage:    "Skips the first chapter, thus omiting it from the final product. Usefull for removing that 'Recorded by...' at the begining of playon videos",
+						Required: false,
+					},
+				},
+			},
+			{
+				Name:   "sync",
+				Usage:  "upload new files to the provided bucket",
+				Action: sync.Sync,
 				Flags: []cli.Flag{
 					&cli.PathFlag{
 						Name:     "path",
@@ -48,80 +65,10 @@ func main() {
 						Required: false,
 					},
 				},
-				Action: func(c *cli.Context) error {
-					err := sync(c.String("bucket"), c.String("path"), c.StringSlice("filter"), c.Bool("deep"))
-					if err != nil {
-						return err
-					}
-					return nil
-				},
 			},
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
 		panic(err)
 	}
-}
-
-func sync(bucket string, folderPath string, filters []string, deep bool) error {
-	ctx := context.Background()
-
-	client, err := getAwsClient(ctx)
-	if err != nil {
-		return err
-	}
-
-	db, err := localsql.InitDb("manifest.db")
-	if err != nil {
-		return err
-	}
-
-	files, err := filesystem.WalkAndHash(filters, folderPath)
-	if err != nil {
-		return err
-	}
-
-	err = db.UpdateManifest(files)
-	if err != nil {
-		return err
-	}
-
-	uploads, err := db.GetUploadList()
-	if err != nil {
-		return err
-	}
-
-	// So we can monitor the progress of the file file writing
-	progressor := &messages.ProgressReadWriter{}
-	ch := make(chan messages.ProgressMsg)
-	go progressor.GetProgress(ch)
-	//
-
-	// This should send it to the execution loop
-	prog := tea.NewProgram(ui.NewModel(folderPath, client, uploads, bucket, db, filters, progressor, deep))
-
-	//Sends progress status for video reads/writes
-	go func() {
-		for {
-			update := <-ch
-			prog.Send(update)
-		}
-	}()
-
-	_, err = prog.Run()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func getAwsClient(ctx context.Context) (*s3.Client, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	client := s3.NewFromConfig(cfg)
-	return client, nil
 }

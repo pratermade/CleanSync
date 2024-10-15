@@ -2,11 +2,11 @@ package splitter
 
 import (
 	"bufio"
+	"cleansync/filesystem"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"s3sync/messages"
 )
 
 const chunkSize = int64(16 * 1024 * 1024) // 16mb chunks x 128 iterations = 2GB pieces
@@ -62,7 +62,7 @@ type SplitInfo struct {
 	Index           int
 }
 
-func SplitFile(info *SplitInfo, pw *messages.ProgressReadWriter) (*SplitInfo, error) {
+func SplitFile(info *SplitInfo, pw *filesystem.ProgressReadWriter) (*SplitInfo, error) {
 
 	file, err := os.Open(info.OrgFilePath)
 	if err != nil {
@@ -103,7 +103,7 @@ func SplitFile(info *SplitInfo, pw *messages.ProgressReadWriter) (*SplitInfo, er
 	return info, nil
 }
 
-func writeChunk(reader *os.File, writer *messages.ProgressReadWriter, offset int64, fullSize int64) (int, error) {
+func writeChunk(reader *os.File, writer *filesystem.ProgressReadWriter, offset int64, fullSize int64) (int, error) {
 	sizeLeft := fullSize - offset
 	writer.Size = sizeLeft % partSize
 	if sizeLeft >= partSize {

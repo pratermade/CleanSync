@@ -1,12 +1,12 @@
-package ui
+package sync
 
 import (
+	"cleansync/messages"
+	"cleansync/splitter"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"s3sync/messages"
-	"s3sync/splitter"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"

@@ -1,4 +1,4 @@
-module s3sync
+module cleansync
 
 go 1.21
 

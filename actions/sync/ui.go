@@ -1,10 +1,10 @@
-package ui
+package sync
 
 import (
+	"cleansync/filesystem"
+	"cleansync/localsql"
 	"context"
 	"fmt"
-	"s3sync/localsql"
-	"s3sync/messages"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -30,7 +30,7 @@ type UploadModel struct {
 	filters        []string
 	currentProcess string
 	indention      string
-	progressor     *messages.ProgressReadWriter
+	progressor     *filesystem.ProgressReadWriter
 }
 
 var (
@@ -40,7 +40,7 @@ var (
 )
 
 // NewModel initializes and returns a new model
-func NewModel(folderPath string, client *s3.Client, fileList []string, bucket string, db *localsql.Sqldb, filters []string, progressor *messages.ProgressReadWriter, deep bool) UploadModel {
+func NewModel(folderPath string, client *s3.Client, fileList []string, bucket string, db *localsql.Sqldb, filters []string, progressor *filesystem.ProgressReadWriter, deep bool) UploadModel {
 	p := progress.New(
 		progress.WithDefaultGradient(),
 		progress.WithWidth(40),
