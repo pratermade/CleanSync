@@ -54,8 +54,8 @@ GLOBAL OPTIONS:
 
 *Subcommands* 
 
-sync
-`.\cleansync.exe sync -path=x:\videos -bucket=my-backup-bucket -filter=mkv -filter=mp4 -deep # example command`
+* sync
+  * `.\cleansync.exe sync -path=x:\videos -bucket=my-backup-bucket -filter=mkv -filter=mp4 -deep`
                                                              
 ```
 NAME:
@@ -72,10 +72,9 @@ OPTIONS:
    --help, -h                                             show help                                         show help
 ```
 
-adclear
+* adclear
+  * `./cleansync adclear --source c:\artifacts\original.mp4 --dest x:\artifacts\edited3.mp4 --skip_first`
 
-ex:
-`./cleansync adclear --source c:\artifacts\original.mp4 --dest x:\artifacts\edited3.mp4 --skip_first`
 NAME:
    cleansync adclear - Removes adds from the source and copies the resulting video to the destination
 
