@@ -22,6 +22,8 @@ Download and build with Go 1.21. Uses sqlite so you will need the gcc libries to
 Uses sqlite so you will need the gcc libries to build. Download GCC from (http://tdm-gcc.tdragon.net/download)[http://tdm-gcc.tdragon.net/download]
 Was built targeting windows 10, but I don't see any reason it would not work on Linux or Mac
 
+*Requires ffmpeg to me installed and in your path*
+
 ### Installing
 
 After it is built, copy it to where you want it to live. It will create a manifest.db in that directory when ran. This is where it catalogs the files that it backs up.
@@ -30,18 +32,19 @@ After it is built, copy it to where you want it to live. It will create a manife
 
 
 ```
-s3sync -help # for information
-.\s3sync.exe sync -path=x:\videos -bucket=my-backup-bucket -filter=mkv -filter=mp4 -deep # example command
+cleansync -help # for information
+
 ```
 
 ```
 NAME:
-   s3sync - Sync with the provided s3 bucket
+   cleansync - tools to manage video library
 
 USAGE:
-   s3sync [global options] command [command options]
+   cleansync [global options] command [command options]
 
 COMMANDS:
+   adclear  Removes adds from the source and copies the resulting video to the destination
    sync     upload new files to the provided bucket
    help, h  Shows a list of commands or help for one command
 
@@ -51,20 +54,39 @@ GLOBAL OPTIONS:
 
 *Subcommands* 
 
+sync
+`.\cleansync.exe sync -path=x:\videos -bucket=my-backup-bucket -filter=mkv -filter=mp4 -deep # example command`
+                                                             
 ```
 NAME:
-   s3sync sync - upload new files to the provided bucket
+   cleansync sync - upload new files to the provided bucket
 
 USAGE:
-   s3sync sync [command options]
+   cleansync sync [command options]
 
 OPTIONS:
    --path value, -p value                                 The source (local) folder to sync with S3
    --bucket value, -b value                               The name of the bucket to sysnc to
    --filter value, -f value [ --filter value, -f value ]  file types to filter for. Can be specified multiple times for multiple file types.
    --deep, -d                                             deep archive in S3 (default: false)
-   --help, -h                                             show help
+   --help, -h                                             show help                                         show help
 ```
+
+adclear
+
+ex:
+`./cleansync adclear --source c:\artifacts\original.mp4 --dest x:\artifacts\edited3.mp4 --skip_first`
+NAME:
+   cleansync adclear - Removes adds from the source and copies the resulting video to the destination
+
+USAGE:
+   cleansync adclear [command options]
+
+OPTIONS:
+   --source value  The source file or folder, if it is a folder, it will attempt to process all video files. (currently mp4, mkv)
+   --dest value    The destination file or folder
+   --skip_first    Skips the first chapter, thus omiting it from the final product. Usefull for removing that 'Recorded by...' at the begining of playon videos (default: false)
+   --help, -h      show help
 
 ## Version History
 

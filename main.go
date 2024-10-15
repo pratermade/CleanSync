@@ -10,8 +10,8 @@ import (
 
 func main() {
 	app := &cli.App{
-		Name:  "s3sync",
-		Usage: "Sync with the provided s3 bucket",
+		Name:  "cleansync",
+		Usage: "tools to manage video library",
 		Commands: []*cli.Command{
 			{
 				Name:   "adclear",
