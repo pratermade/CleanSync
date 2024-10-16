@@ -1,7 +1,9 @@
 package adclear
 
 import (
+	"cleansync/ffmpeg"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -16,47 +18,65 @@ func (m *VideoModel) SendError(err error) tea.Cmd {
 	}
 }
 
-func (m *VideoModel) RemoveAdsCmd(started bool, done bool, tmpLocation string) tea.Cmd {
+func (m *VideoModel) RemoveAdsCmd(started bool, done bool, ndx int) tea.Cmd {
 	return func() tea.Msg {
 		msg := RemoveAdsMsg{
-			started:     started,
-			tmpLocation: tmpLocation,
-			done:        done,
+			started: started,
+			done:    done,
 		}
 		if started {
-			nonAdIndexes := m.video.GetNonAdIndexes(m.skipFirst)
-			tmpVideo, err := m.video.Recut(nonAdIndexes)
+			vid, err := ffmpeg.NewVideo(m.sources[ndx], m.tempFolder)
+			if err != nil {
+				return VideoModel{err: err}
+
+			}
+			vid.TmpFolder = m.tempFolder
+			nonAdIndexes := vid.GetNonAdIndexes(m.skipFirst)
+			tmpVideo, err := vid.Recut(nonAdIndexes)
 			if err != nil {
 				msg.err = err
 				return err
 			}
+			if ndx >= len(m.sources)-1 {
+				msg.done = true
+			}
 			msg.tmpLocation = tmpVideo
-			msg.done = true
 			return msg
 		}
 		return msg
 	}
 }
 
-func (m *VideoModel) CopyFileCmd(started bool, done bool, tmpLocation string) tea.Cmd {
+func (m *VideoModel) CopyFileCmd(started bool, done bool, ndx int) tea.Cmd {
+	// the dest fiolder if it does not exist
+
 	return func() tea.Msg {
 		msg := CopyFileMsg{
-			started:     started,
-			done:        done,
-			tmpLocation: tmpLocation,
+			started: started,
+			done:    done,
+		}
+
+		err := os.MkdirAll(m.dest, os.ModePerm)
+		if err != nil {
+			msg.err = err
+			return msg
 		}
 		if started {
-			err := m.progressor.Copy(tmpLocation, m.dest)
-			if err != nil {
-				msg.err = err
-				return err
-			}
-			err = os.RemoveAll(m.video.TmpFolder)
+			vidName := filepath.Base(m.editedVideos[ndx])
+			dest := filepath.Join(m.dest, vidName)
+			err := m.progressor.Copy(m.editedVideos[ndx], dest)
 			if err != nil {
 				msg.err = err
 				return msg
 			}
-			msg.done = true
+			if ndx >= len(m.editedVideos)-1 {
+				err = os.RemoveAll(m.tempFolder)
+				if err != nil {
+					msg.err = err
+					return msg
+				}
+				msg.done = true
+			}
 			return msg
 		}
 		return msg

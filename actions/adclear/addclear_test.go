@@ -5,7 +5,7 @@ import (
 )
 
 func TestClear(t *testing.T) {
-	err := clear("c:\\artifacts\\original.mp4", "x:\\artifacts\\new.mp4", true)
+	err := clear("C:\\Users\\Steve\\Videos\\PlayOn\\The Ark\\Season 1", "c:\\artifacts3", true)
 	if err != nil {
 		t.Fatal(err)
 	}

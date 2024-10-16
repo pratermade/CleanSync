@@ -114,8 +114,7 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
 
 ## Bugs
  
- * when a file is in the manifest and is not found for upload or splitting, remove it from the database and move on. 
- * make the split files 2GB
+ * when a file is in the manifest and is not found for upload or splitting, remove it from the database and move on. not
  * need to add overall status to cli output
 
  ## Notes

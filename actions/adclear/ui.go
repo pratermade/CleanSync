@@ -1,8 +1,10 @@
 package adclear
 
 import (
-	"cleansync/ffmpeg"
 	"cleansync/filesystem"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -14,7 +16,6 @@ import (
 type VideoModel struct {
 	width          int
 	height         int
-	video          ffmpeg.Video
 	spinner        spinner.Model
 	progress       progress.Model
 	done           bool
@@ -23,7 +24,10 @@ type VideoModel struct {
 	err            error
 	skipFirst      bool
 	dest           string
-	source         string
+	sources        []string
+	ndx            int
+	tempFolder     string
+	editedVideos   []string
 }
 
 var (
@@ -40,28 +44,77 @@ func NewVideo(source string, dest string, skipFirst bool, progressor *filesystem
 	s := spinner.New()
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
-	vid, err := ffmpeg.NewVideo(source)
+	sources, err := getSources(source, dest)
 	if err != nil {
 		return VideoModel{err: err}
+	}
 
+	tmpFolder, err := os.MkdirTemp("", "cleansync")
+	if err != nil {
+		return VideoModel{err: err}
 	}
 
 	vm := VideoModel{
 		spinner:    s,
 		progress:   p,
-		video:      vid,
 		progressor: progressor,
 		skipFirst:  skipFirst,
 		dest:       dest,
-		source:     source,
+		sources:    sources,
+		tempFolder: tmpFolder,
+		ndx:        0,
 	}
 
 	return vm
 }
 
+func getSources(source string, dest string) ([]string, error) {
+	var sources []string
+
+	info, err := os.Stat(source)
+	if err != nil {
+		return sources, err
+	}
+
+	if info.IsDir() {
+		err = filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			// Check if the file has an extension of .mp4 or .mkv
+			if !info.IsDir() && (strings.HasSuffix(strings.ToLower(info.Name()), ".mp4") || strings.HasSuffix(strings.ToLower(info.Name()), ".mkv")) {
+				sources = append(sources, path)
+			}
+			return nil
+
+		})
+		if err != nil {
+			return sources, err
+		}
+
+		// Since this is a folder specified, we need to make sure the destiation is also a folder and not a file
+
+		info, err := os.Stat(source)
+		if err != nil {
+			return sources, err
+		}
+
+		if !info.IsDir() {
+			return sources, fmt.Errorf("destination is not a folder. Destination must be a folder if the source is")
+		}
+
+		return sources, nil
+	}
+
+	// If it is not a directory supplied, assume it is a file
+	sources = append(sources, source)
+	return sources, nil
+}
+
 // Init is the entry point of the ui/program
 func (m VideoModel) Init() tea.Cmd {
-	return tea.Batch(m.RemoveAdsCmd(false, false, ""), m.spinner.Tick)
+	return tea.Batch(m.RemoveAdsCmd(false, false, 0), m.spinner.Tick)
 }
 
 // View is the initial state of the ui

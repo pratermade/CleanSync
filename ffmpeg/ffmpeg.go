@@ -25,11 +25,7 @@ type Video struct {
 	chapters      []Chapter
 }
 
-func NewVideo(filePath string) (Video, error) {
-	tmpFolder, err := os.MkdirTemp("", "clipper")
-	if err != nil {
-		return Video{}, fmt.Errorf("could not create temp folder: %s", err)
-	}
+func NewVideo(filePath string, tmpFolder string) (Video, error) {
 
 	vidname := filepath.Base(filePath)
 	ext := filepath.Ext(vidname)
@@ -41,7 +37,7 @@ func NewVideo(filePath string) (Video, error) {
 		videoExt:      ext,
 	}
 
-	err = video.getChapterInfo()
+	err := video.getChapterInfo()
 	if err != nil {
 		return Video{}, err
 	}
@@ -57,10 +53,16 @@ func (v *Video) getChapterInfo() error {
 		"-loglevel",
 		"error",
 	}
+	f, err := os.OpenFile("log.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	mwriter := io.MultiWriter(f, &out)
 	cmd := exec.Command("ffprobe", args...)
-	cmd.Stdout = &out
-	cmd.Stderr = os.Stderr
-	err := cmd.Run()
+	cmd.Stdout = mwriter
+	cmd.Stderr = f
+	err = cmd.Run()
 	if err != nil {
 		return fmt.Errorf("error running ffprobe with the args: %s, %s", args, err)
 	}
@@ -133,7 +135,7 @@ func (v *Video) Recut(ndxs []int) (string, error) {
 		return "", fmt.Errorf("error writing concat file: %s", err)
 	}
 
-	tempVideo := filepath.Join(v.TmpFolder, fmt.Sprintf("%s-tmp%s", v.videoBaseName, v.videoExt))
+	tempVideo := filepath.Join(v.TmpFolder, fmt.Sprintf("%s%s", v.videoBaseName, v.videoExt))
 
 	err = runFFmpegCommand([]string{"-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c", "copy", "-map", "0", tempVideo})
 	if err != nil {
@@ -160,10 +162,17 @@ func (v *Video) GetNonAdIndexes(skipFirst bool) []int {
 func runFFmpegCommand(args []string) error {
 	// fmt.Println("running: ffmpeg: ", args)
 	cmd := exec.Command("ffmpeg", args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
 
-	err := cmd.Run()
+	f, err := os.OpenFile("log.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	cmd.Stdout = f
+	cmd.Stderr = f
+
+	err = cmd.Run()
 	if err != nil {
 		return err
 	}

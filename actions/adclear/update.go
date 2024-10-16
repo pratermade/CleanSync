@@ -3,13 +3,24 @@ package adclear
 import (
 	"cleansync/messages"
 	"fmt"
+	"path/filepath"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const logo = `
+			 _______                 _____                 
+			/  ____/ /__  ____ _____/ ___/__  ______  _____
+			/ /   / / _ \/ __ / __ \\__ \/ / / / __ \/ ___/
+			/ /___/ /  __/ /_/ / / / /__/ / /_/ / / / / /__  
+			\____/_/\___/\__,_/_/ /_/____/\__, /_/ /_/\___/  
+			--------------------------/____/---------------      
+`
+
 func (m VideoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -20,31 +31,43 @@ func (m VideoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case RemoveAdsMsg:
 		if !msg.started {
-			m.currentProcess = fmt.Sprintf("Removing ads from: %s", m.source)
-			return m, tea.Batch(m.RemoveAdsCmd(true, false, ""))
+			m.currentProcess = fmt.Sprintf("Removing ads from: %s", m.sources[m.ndx])
+			return m, tea.Sequence(tea.Printf(logo), m.RemoveAdsCmd(true, false, m.ndx))
 		}
 		if msg.done {
-			m.currentProcess = fmt.Sprintf("Copying file from %s to %s", msg.tmpLocation, m.dest)
-			return m, tea.Sequence(tea.Printf("%s Removing ads from: %s", checkMark, m.source), m.CopyFileCmd(false, false, msg.tmpLocation))
+			// return m, tea.Sequence(tea.Printf("%s Removing ads from: %s", checkMark, m.sources[m.ndx]), m.CopyFileCmd(false, false, m.ndx))
+			m.ndx = 0
+			m.editedVideos = append(m.editedVideos, msg.tmpLocation)
+			return m, tea.Sequence(tea.Printf("%s Removing ads from: %s", checkMark, m.sources[m.ndx]), m.CopyFileCmd(false, false, m.ndx))
 		}
-		return m, tea.Sequence(m.RemoveAdsCmd(true, true, msg.tmpLocation))
+
+		// Main Loop
+		m.editedVideos = append(m.editedVideos, msg.tmpLocation)
+		m.ndx++
+		m.currentProcess = fmt.Sprintf("Removing ads from: %s", m.sources[m.ndx])
+		return m, tea.Sequence(tea.Printf("%s Removing ads from: %s", checkMark, m.sources[m.ndx-1]), m.RemoveAdsCmd(true, false, m.ndx))
 	case CopyFileMsg:
-		// This one is a good prototypical example
+		m.progressor.ResetProgress()
+		vidname := filepath.Base(m.editedVideos[m.ndx])
 		if !msg.started {
 			// Not started yet
-			m.progressor.ResetProgress()
-			return m, tea.Batch(m.CopyFileCmd(true, false, msg.tmpLocation))
+			m.currentProcess = fmt.Sprintf("Copying file from %s to %s", vidname, m.dest)
+
+			return m, tea.Batch(m.CopyFileCmd(true, false, m.ndx))
 		}
 		if msg.done {
-			return m, tea.Sequence(tea.Printf("%s Copying file: %s", checkMark, m.source), tea.Quit)
+			return m, tea.Sequence(tea.Printf("%s Copying file: %s to %s", checkMark, vidname, m.dest), tea.Quit)
 		}
 		if msg.err != nil {
 			m.SendError(msg.err)
 		}
-		return m, tea.Sequence(m.CopyFileCmd(true, true, msg.tmpLocation))
+		m.ndx++
+		nextVid := filepath.Base(m.editedVideos[m.ndx])
+		m.currentProcess = fmt.Sprintf(" Copying file: %s to %s", nextVid, m.dest)
+		return m, tea.Sequence(tea.Printf("%s Copying file: %s to %s", checkMark, vidname, m.dest), m.CopyFileCmd(true, false, m.ndx))
 	case CleanTmpMsg:
-		// All Done
-		return m, tea.Batch(tea.Printf("Done processing file: %s", m.source), tea.Quit)
+		// All Donewinter
+		return m, tea.Batch(tea.Printf("Done processing file: %s", m.sources[m.ndx]), tea.Quit)
 	case messages.ErrMsg:
 		// handle errorI guess
 		return m, tea.Quit
