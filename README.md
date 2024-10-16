@@ -110,12 +110,14 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
  * Improve error information
  * Add download functionality
  * Change UI to https://github.com/charmbracelet/bubbletea/tree/master/examples
- * Make it so we can remove commercials from entire directories
+ * Need to confirm that the destiation is a directory and not a file when trying to copy files to thier dest during the adclear command
+ 
 
 ## Bugs
  
  * when a file is in the manifest and is not found for upload or splitting, remove it from the database and move on. not
  * need to add overall status to cli output
+ * ad clear fails if filename has a: '
 
  ## Notes
 
