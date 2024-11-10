@@ -111,7 +111,7 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
  * Add download functionality
  * Change UI to https://github.com/charmbracelet/bubbletea/tree/master/examples
  * Need to confirm that the destiation is a directory and not a file when trying to copy files to thier dest during the adclear command
- 
+ * BugFix, crash when there are no commercials 
 
 ## Bugs
  

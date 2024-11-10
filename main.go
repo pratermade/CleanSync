@@ -2,6 +2,7 @@ package main
 
 import (
 	"cleansync/actions/adclear"
+	"cleansync/actions/menu"
 	"cleansync/actions/sync"
 	"os"
 
@@ -10,8 +11,9 @@ import (
 
 func main() {
 	app := &cli.App{
-		Name:  "cleansync",
-		Usage: "tools to manage video library",
+		Name:   "cleansync",
+		Usage:  "tools to manage video library",
+		Action: menu.Display,
 		Commands: []*cli.Command{
 			{
 				Name:   "adclear",
