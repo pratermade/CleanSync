@@ -2,3 +2,5 @@
 *.exe
 *.db
 syncer/*.db
+cleansync
+sleansync.exe
