@@ -1,8 +1,8 @@
 package main
 
 import (
-	"cleansync/actions/adclear"
 	"cleansync/actions/menu"
+	"cleansync/actions/processVideo"
 	"cleansync/actions/sync"
 	"os"
 
@@ -18,7 +18,7 @@ func main() {
 			{
 				Name:   "adclear",
 				Usage:  "Removes adds from the source and copies the resulting video to the destination",
-				Action: adclear.Clear,
+				Action: processVideo.Clear,
 				Flags: []cli.Flag{
 					&cli.PathFlag{
 						Name:     "source",

@@ -10,8 +10,8 @@ func TestGetChapterInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if video.chapters[1].end != 20.967 {
-		t.Fatalf("Expected the second chapter to end on 20967 but it ended on %f", video.chapters[1].end)
+	if video.Chapters[1].end != 20.967 {
+		t.Fatalf("Expected the second chapter to end on 20967 but it ended on %f", video.Chapters[1].end)
 	}
 }
 

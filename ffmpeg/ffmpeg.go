@@ -28,6 +28,18 @@ type Video struct {
 func NewVideo(filePath string, tmpFolder string) (Video, error) {
 
 	vidname := filepath.Base(filePath)
+	// if the video name contains a single quote, remove it and rename the file without the quote
+	if strings.Contains(vidname, "'") {
+		newVidName := strings.Replace(vidname, "'", "", -1)
+		newVidPath := filepath.Join(filepath.Dir(filePath), newVidName)
+		err := os.Rename(filePath, newVidPath)
+		if err != nil {
+			return Video{}, fmt.Errorf("error renaming file: %s", err)
+		}
+		filePath = newVidPath
+		vidname = newVidName
+	}
+
 	ext := filepath.Ext(vidname)
 
 	video := Video{
@@ -123,6 +135,35 @@ func (v *Video) getChapterInfo() error {
 }
 
 func (v *Video) Recut(ndxs []int) (string, error) {
+	// remove the single quotes from the v.videoBaseName
+	videoBaseName := strings.Replace(v.videoBaseName, "'", "", -1)
+	tempVideo := filepath.Join(v.TmpFolder, fmt.Sprintf("%s%s", videoBaseName, v.videoExt))
+	if ndxs == nil {
+		// just copy the file to the temp location
+		err := os.MkdirAll(v.TmpFolder, os.ModePerm)
+		if err != nil {
+			return "", fmt.Errorf("error creating temp folder: %s", err)
+		}
+
+		srcFile, err := os.Open(v.filePath)
+		if err != nil {
+			return "", fmt.Errorf("error opening source file: %s", err)
+		}
+		defer srcFile.Close()
+
+		destFile, err := os.Create(tempVideo)
+		if err != nil {
+			return "", fmt.Errorf("error creating destination file: %s", err)
+		}
+		defer destFile.Close()
+
+		_, err = io.Copy(destFile, srcFile)
+		if err != nil {
+			return "", fmt.Errorf("error copying file to temp folder: %s", err)
+		}
+
+		return tempVideo, nil
+	}
 	// Create a text document used to reassemble:
 	concatString := ""
 
@@ -135,8 +176,6 @@ func (v *Video) Recut(ndxs []int) (string, error) {
 		return "", fmt.Errorf("error writing concat file: %s", err)
 	}
 
-	tempVideo := filepath.Join(v.TmpFolder, fmt.Sprintf("%s%s", v.videoBaseName, v.videoExt))
-
 	err = runFFmpegCommand([]string{"-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-c", "copy", "-map", "0", tempVideo})
 	if err != nil {
 		return "", fmt.Errorf("error concatenating parts: %s", err)
@@ -146,6 +185,9 @@ func (v *Video) Recut(ndxs []int) (string, error) {
 }
 
 func (v *Video) GetNonAdIndexes(skipFirst bool) []int {
+	if len(v.chapters) == 0 {
+		return nil
+	}
 	var nonads []int
 	for i, chap := range v.chapters {
 		if strings.ToLower(chap.title) != "advertisement" {
