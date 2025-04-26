@@ -99,7 +99,11 @@ OPTIONS:
    * started tagging versions
 * v0.0.5
    * More cli output fixes
-
+*v0.0.6
+   * Fixed the crash if there are no commercials detected
+   * Fix hang when there is a quote in the file name. Renames the file without the quote.
+   * Made the file transfer directly after the commercials are removed, instead of after all the videos are processed
+   * various code clean up.
 
 ## License
 
@@ -111,13 +115,11 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE V3 License - see t
  * Add download functionality
  * Change UI to https://github.com/charmbracelet/bubbletea/tree/master/examples
  * Need to confirm that the destiation is a directory and not a file when trying to copy files to thier dest during the adclear command
- * BugFix, crash when there are no commercials 
 
 ## Bugs
  
  * when a file is in the manifest and is not found for upload or splitting, remove it from the database and move on. not
  * need to add overall status to cli output
- * ad clear fails if filename has a: '
 
  ## Notes
 
